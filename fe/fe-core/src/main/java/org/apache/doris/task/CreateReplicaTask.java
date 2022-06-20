@@ -89,6 +89,8 @@ public class CreateReplicaTask extends AgentTask {
 
     private DataSortInfo dataSortInfo;
 
+    private static String storagePolicy;
+
     public CreateReplicaTask(long backendId, long dbId, long tableId, long partitionId, long indexId, long tabletId,
                              long replicaId, short shortKeyColumnCount, int schemaHash, long version,
                              KeysType keysType, TStorageType storageType,
@@ -96,7 +98,8 @@ public class CreateReplicaTask extends AgentTask {
                              Set<String> bfColumns, double bfFpp, MarkedCountDownLatch<Long, Long> latch,
                              List<Index> indexes,
                              boolean isInMemory,
-                             TTabletType tabletType, TCompressionType compressionType) {
+                             TTabletType tabletType, TCompressionType compressionType,
+                             String storagePolicy) {
         super(null, backendId, TTaskType.CREATE, dbId, tableId, partitionId, indexId, tabletId);
 
         this.replicaId = replicaId;
@@ -120,6 +123,7 @@ public class CreateReplicaTask extends AgentTask {
 
         this.isInMemory = isInMemory;
         this.tabletType = tabletType;
+        this.storagePolicy = storagePolicy;
     }
 
     public CreateReplicaTask(long backendId, long dbId, long tableId, long partitionId, long indexId, long tabletId,
@@ -131,7 +135,8 @@ public class CreateReplicaTask extends AgentTask {
                              boolean isInMemory,
                              TTabletType tabletType,
                              DataSortInfo dataSortInfo,
-                             TCompressionType compressionType) {
+                             TCompressionType compressionType,
+                             String storagePolicy) {
         super(null, backendId, TTaskType.CREATE, dbId, tableId, partitionId, indexId, tabletId);
 
         this.replicaId = replicaId;
@@ -156,6 +161,7 @@ public class CreateReplicaTask extends AgentTask {
         this.isInMemory = isInMemory;
         this.tabletType = tabletType;
         this.dataSortInfo = dataSortInfo;
+        this.storagePolicy = storagePolicy;
     }
 
     public void setIsRecoverTask(boolean isRecoverTask) {
@@ -259,6 +265,8 @@ public class CreateReplicaTask extends AgentTask {
         createTabletReq.setVersion(version);
 
         createTabletReq.setStorageMedium(storageMedium);
+        createTabletReq.setStoragePolicy(storagePolicy);
+
         if (inRestoreMode) {
             createTabletReq.setInRestoreMode(true);
         }

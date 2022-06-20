@@ -159,8 +159,7 @@ public class SparkResource extends Resource {
 
     @Override
     public Map<String, String> getCopiedProperties() {
-        Map<String, String> copiedProperties = Maps.newHashMap(sparkConfigs);
-        return copiedProperties;
+        return Maps.newHashMap(sparkConfigs);
     }
 
     /**

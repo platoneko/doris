@@ -44,6 +44,7 @@ import org.apache.doris.thrift.TStorageMediumMigrateReq;
 import org.apache.doris.thrift.TTaskType;
 import org.apache.doris.thrift.TUpdateTabletMetaInfoReq;
 import org.apache.doris.thrift.TUploadReq;
+import org.apache.doris.thrift.TGetStoragePolicy;
 
 import com.google.common.collect.Lists;
 import org.apache.logging.log4j.LogManager;
@@ -348,6 +349,15 @@ public class AgentBatchTask implements Runnable {
                     LOG.debug(request.toString());
                 }
                 tAgentTaskRequest.setCompactionReq(request);
+                return tAgentTaskRequest;
+            }
+            case NOTIFY_UPDATE_STORAGE_POLICY: {
+                NotifyUpdateStoragePolicyTask notifyUpdateStoragePolicyTask = (NotifyUpdateStoragePolicyTask) task;
+                TGetStoragePolicy request = notifyUpdateStoragePolicyTask.toThrift();
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug(request.toString());
+                }
+                tAgentTaskRequest.setUpdatePolicy(request);
                 return tAgentTaskRequest;
             }
             default:

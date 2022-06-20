@@ -71,6 +71,9 @@ public:
 
     Version version() override;
 
+    int64_t oldest_write_timestamp() override { return 0; }
+    int64_t newest_write_timestamp() override { return 0; }
+
     RowsetSharedPtr rowset() override;
 
     int64_t filtered_rows() override;

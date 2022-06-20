@@ -22,6 +22,7 @@ import org.apache.doris.analysis.CreateResourceStmt;
 import org.apache.doris.analysis.DropResourceStmt;
 import org.apache.doris.catalog.Resource.ResourceType;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.common.Config;
 import org.apache.doris.common.DdlException;
 import org.apache.doris.common.io.Text;
 import org.apache.doris.common.io.Writable;
@@ -48,6 +49,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+
+import static org.apache.doris.catalog.StoragePolicyResource.DEFAULT_STORAGE_POLICY_PROPERTY;
 
 /**
  * Resource manager is responsible for managing external resources used by Doris.
@@ -82,6 +85,20 @@ public class ResourceMgr implements Writable {
         LOG.info("Create resource success. Resource: {}", resource);
     }
 
+    public void createDefaultStoragePolicy() throws DdlException {
+        if (!Config.use_default_storage_policy) {
+            return;
+        }
+
+        if (nameToResource.putIfAbsent(Config.default_storage_policy, DEFAULT_STORAGE_POLICY_PROPERTY) != null){
+            // already exist default storage policy.
+            return;
+        }
+        // log add
+        Catalog.getCurrentCatalog().getEditLog().logCreateResource(DEFAULT_STORAGE_POLICY_PROPERTY);
+        LOG.info("Create resource success. Resource: {}", DEFAULT_STORAGE_POLICY_PROPERTY);
+    }
+
     public void createResource(Resource resource) throws DdlException {
         String resourceName = resource.getName();
         if (nameToResource.putIfAbsent(resourceName, resource) != null) {
@@ -91,6 +108,9 @@ public class ResourceMgr implements Writable {
 
     public void replayCreateResource(Resource resource) {
         nameToResource.put(resource.getName(), resource);
+        if (Config.use_default_storage_policy && resource.getName() == Config.default_storage_policy) {
+                StoragePolicyResource.setDefaultStoragePolicyProperties(resource.getCopiedProperties());
+        }
     }
 
     public void dropResource(DropResourceStmt stmt) throws DdlException {
@@ -98,6 +118,16 @@ public class ResourceMgr implements Writable {
         if (!nameToResource.containsKey(resourceName)) {
             throw new DdlException("Resource(" + resourceName + ") does not exist");
         }
+        if (resourceName.equalsIgnoreCase(DEFAULT_STORAGE_POLICY_PROPERTY.getName())) {
+            throw new DdlException("Resource(" + DEFAULT_STORAGE_POLICY_PROPERTY.getName() + ") does not drop, " +
+                "it's a default storage policy");
+        }
+
+        if (nameToResource.get(resourceName).getType().equals(ResourceType.STORAGE_POLICY)) {
+            // current not support drop storage policy.
+            throw new DdlException("Resource policy( " + resourceName + ") current not support drop storage policy.");
+        }
+
         // Check whether the resource is in use before deleting it, except spark resource
         List<String> usedTables = new ArrayList<>();
         List<Long> dbIds = Catalog.getCurrentCatalog().getDbIds();
@@ -139,6 +169,10 @@ public class ResourceMgr implements Writable {
     // Drop resource whether successful or not
     public void dropResource(Resource resource) {
         String name = resource.getName();
+        if (resource.name.equalsIgnoreCase(DEFAULT_STORAGE_POLICY_PROPERTY.getName())) {
+            LOG.info("doesn't remove default storage policy");
+            return;
+        }
         if (nameToResource.remove(name) == null) {
             LOG.info("resource " + name + " does not exists.");
             return;
@@ -179,6 +213,17 @@ public class ResourceMgr implements Writable {
 
     public int getResourceNum() {
         return nameToResource.size();
+    }
+
+
+    public Map<String, Resource> getResourceByType(ResourceType type){
+        Map<String, Resource> result = Maps.newConcurrentMap();
+        for (Resource  r : nameToResource.values()){
+            if (r.getType() == type){
+                result.put(r.name, r);
+            }
+        }
+        return result;
     }
 
     public List<List<Comparable>> getResourcesInfo(String name, boolean accurateMatch, Set<String> typeSets) {

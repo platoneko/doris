@@ -911,7 +911,7 @@ Status SegmentGroup::remove_old_files(std::vector<std::string>* links_to_remove)
             }
         }
     }
-    std::string pending_delta_path = _rowset_path_prefix + PENDING_DELTA_PREFIX;
+    std::string pending_delta_path = _rowset_path_prefix + "/" + PENDING_DELTA_PREFIX;
     if (FileUtils::check_exist(pending_delta_path)) {
         LOG(INFO) << "remove pending delta path:" << pending_delta_path;
         RETURN_WITH_WARN_IF_ERROR(FileUtils::remove_all(pending_delta_path),

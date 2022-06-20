@@ -109,6 +109,8 @@ public class PropertyAnalyzer {
 
     public static final String PROPERTIES_DISABLE_LOAD = "disable_load";
 
+    public static final String PROPERTIES_STORAGE_POLICY = "storage_policy";
+
     public static DataProperty analyzeDataProperty(Map<String, String> properties, DataProperty oldDataProperty)
             throws AnalysisException {
         if (properties == null || properties.isEmpty()) {
@@ -119,11 +121,13 @@ public class PropertyAnalyzer {
         long cooldownTimeStamp = DataProperty.MAX_COOLDOWN_TIME_MS;
         String remoteStorageResourceName = "";
         long remoteCooldownTimeStamp = DataProperty.MAX_COOLDOWN_TIME_MS;
+        String storagePolicy = "";
 
         boolean hasMedium = false;
         boolean hasCooldown = false;
         boolean hasRemoteStorageResource = false;
         boolean hasRemoteCooldown = false;
+        boolean hasStoragePolicy = false;
         for (Map.Entry<String, String> entry : properties.entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue();
@@ -152,6 +156,11 @@ public class PropertyAnalyzer {
                 remoteCooldownTimeStamp = dateLiteral.unixTimestamp(TimeUtils.getTimeZone());
                 if (remoteCooldownTimeStamp != DataProperty.MAX_COOLDOWN_TIME_MS) {
                     hasRemoteCooldown = true;
+                }
+            } else if (!hasStoragePolicy && key.equalsIgnoreCase(PROPERTIES_STORAGE_POLICY)) {
+                if (!Strings.isNullOrEmpty(value)) {
+                    hasStoragePolicy = true;
+                    storagePolicy = value;
                 }
             }
         } // end for properties
@@ -213,7 +222,7 @@ public class PropertyAnalyzer {
         }
 
         Preconditions.checkNotNull(storageMedium);
-        return new DataProperty(storageMedium, cooldownTimeStamp, remoteStorageResourceName, remoteCooldownTimeStamp);
+        return new DataProperty(storageMedium, cooldownTimeStamp, remoteStorageResourceName, remoteCooldownTimeStamp, storagePolicy);
     }
 
     public static short analyzeShortKeyColumnCount(Map<String, String> properties) throws AnalysisException {
@@ -514,6 +523,15 @@ public class PropertyAnalyzer {
         }
 
         return resourceName;
+    }
+
+    public static String analyzeStoragePolicy(Map<String, String> properties) throws AnalysisException {
+        String storagePolicy = "";
+        if (properties != null && properties.containsKey(PROPERTIES_STORAGE_POLICY)) {
+            storagePolicy = properties.get(PROPERTIES_STORAGE_POLICY);
+        }
+
+        return storagePolicy;
     }
 
     // analyze property like : "type" = "xxx";

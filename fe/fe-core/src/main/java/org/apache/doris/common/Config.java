@@ -1664,4 +1664,14 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = false, masterOnly = true)
     public static boolean be_rebalancer_fuzzy_test = false;
+    
+    /**
+     * When create a table(or partition), you can specify its storage policy.
+     * If not set, this specifies the default policy when created.
+     */
+    @ConfField
+    public static boolean use_default_storage_policy = false;
+    @ConfField
+    public static String default_storage_policy = "default_storage_policy";
+
 }

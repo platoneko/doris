@@ -32,6 +32,16 @@ public class ModifyTablePropertiesClause extends AlterTableClause {
 
     private Map<String, String> properties;
 
+    public String getStoragePolicy() {
+        return StoragePolicy;
+    }
+
+    public void setStoragePolicy(String storagePolicy) {
+        StoragePolicy = storagePolicy;
+    }
+
+    private String StoragePolicy;
+
     public ModifyTablePropertiesClause(Map<String, String> properties) {
         super(AlterOpType.MODIFY_TABLE_PROPERTY);
         this.properties = properties;
@@ -91,8 +101,11 @@ public class ModifyTablePropertiesClause extends AlterTableClause {
             throw new AnalysisException("Alter tablet type not supported");
         } else if (properties.containsKey(PropertyAnalyzer.PROPERTIES_REMOTE_STORAGE_RESOURCE)) {
             throw new AnalysisException("Alter table remote_storage_resource is not supported.");
+        } else if (properties.containsKey(PropertyAnalyzer.PROPERTIES_STORAGE_POLICY)) {
+            this.needTableStable = false;
+            setStoragePolicy(properties.getOrDefault(PropertyAnalyzer.PROPERTIES_STORAGE_POLICY, ""));
         } else {
-            throw new AnalysisException("Unknown table property: " + properties.keySet());
+                throw new AnalysisException("Unknown table property: " + properties.keySet());
         }
     }
 

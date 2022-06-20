@@ -47,7 +47,7 @@ public:
 
     Status remove() override;
 
-    Status link_files_to(const FilePathDesc& dir_desc, RowsetId new_rowset_id) override;
+    Status link_files_to(const std::string& dir, RowsetId new_rowset_id) override;
 
     Status copy_files_to(const std::string& dir, const RowsetId& new_rowset_id) override;
 
@@ -66,7 +66,7 @@ public:
 protected:
     friend class RowsetFactory;
 
-    AlphaRowset(const TabletSchema* schema, const FilePathDesc& rowset_path_desc,
+    AlphaRowset(const TabletSchema* schema, const std::string& tablet_path,
                 RowsetMetaSharedPtr rowset_meta);
 
     // init segment groups
