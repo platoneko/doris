@@ -260,6 +260,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
+import static org.apache.doris.catalog.StoragePolicyResource.DEFAULT_STORAGE_POLICY_PROPERTY;
+import static org.apache.doris.common.util.PropertyAnalyzer.PROPERTIES_STORAGE_POLICY;
+
 public class Catalog {
     private static final Logger LOG = LogManager.getLogger(Catalog.class);
     // 0 ~ 9999 used for qe
@@ -3350,7 +3353,8 @@ public class Catalog {
                                             partition.getId(),
                                             hddProperty,
                                             ReplicaAllocation.NOT_SET,
-                                            partitionInfo.getIsInMemory(partition.getId()));
+                                            partitionInfo.getIsInMemory(partition.getId()),
+                                            partitionInfo.getStoragePolicy(partitionId));
                             editLog.logModifyPartition(info);
                         }
                     } // end for partitions
@@ -4058,7 +4062,7 @@ public class Catalog {
         partitionInfo.setReplicaAllocation(partition.getId(), replicaAlloc);
         // log
         ModifyPartitionInfo info = new ModifyPartitionInfo(db.getId(), table.getId(), partition.getId(),
-                newDataProperty, replicaAlloc, isInMemory);
+                newDataProperty, replicaAlloc, isInMemory, partitionInfo.getStoragePolicy(partition.getId()));
         editLog.logModifyPartition(info);
         LOG.debug("modify partition[{}-{}-{}] replica allocation to {}", db.getId(), table.getId(),
                 partition.getName(), replicaAlloc.toCreateStmt());
@@ -4102,10 +4106,12 @@ public class Catalog {
             tableProperty.modifyTableProperties(properties);
         }
         tableProperty.buildInMemory();
+        tableProperty.buildStoragePolicy();
 
         // need to update partition info meta
         for (Partition partition : table.getPartitions()) {
             table.getPartitionInfo().setIsInMemory(partition.getId(), tableProperty.isInMemory());
+            table.getPartitionInfo().setStoragePolicy(partition.getId(),tableProperty.getStoragePolicy());
         }
 
         ModifyTablePropertyOperationLog info
@@ -4876,7 +4882,7 @@ public class Catalog {
                         for (Replica replica : replicas) {
                             long backendId = replica.getBackendId();
                             long replicaId = replica.getId();
-                            DropReplicaTask dropTask = new DropReplicaTask(backendId, tabletId, replicaId, schemaHash);
+                            DropReplicaTask dropTask = new DropReplicaTask(backendId, tabletId, replicaId, schemaHash, true);
                             batchTask.addTask(dropTask);
                         } // end for replicas
                     } // end for tablets

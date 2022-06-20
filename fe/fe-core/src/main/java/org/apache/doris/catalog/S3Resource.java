@@ -141,8 +141,7 @@ public class S3Resource extends Resource {
 
     @Override
     public Map<String, String> getCopiedProperties() {
-        Map<String, String> copiedProperties = Maps.newHashMap(properties);
-        return copiedProperties;
+        return Maps.newHashMap(properties);
     }
 
     @Override

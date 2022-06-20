@@ -135,7 +135,6 @@ public abstract class Resource implements Writable {
      */
     protected abstract void setProperties(Map<String, String> properties) throws DdlException;
 
-
     public abstract Map<String, String> getCopiedProperties();
 
     /**

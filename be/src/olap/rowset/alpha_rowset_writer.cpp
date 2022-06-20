@@ -97,8 +97,8 @@ Status AlphaRowsetWriter::add_rowset(RowsetSharedPtr rowset) {
     AlphaRowsetSharedPtr alpha_rowset = std::dynamic_pointer_cast<AlphaRowset>(rowset);
     for (auto& segment_group : alpha_rowset->_segment_groups) {
         RETURN_NOT_OK(_init());
-        RETURN_NOT_OK(segment_group->link_segments_to_path(
-                _rowset_writer_context.path_desc.filepath, _rowset_writer_context.rowset_id));
+        RETURN_NOT_OK(segment_group->link_segments_to_path(_rowset_writer_context.tablet_path,
+                                                           _rowset_writer_context.rowset_id));
         _cur_segment_group->set_empty(segment_group->empty());
         _cur_segment_group->set_num_segments(segment_group->num_segments());
         _cur_segment_group->add_zone_maps(segment_group->get_zone_maps());
@@ -121,8 +121,8 @@ Status AlphaRowsetWriter::add_rowset_for_linked_schema_change(RowsetSharedPtr ro
     AlphaRowsetSharedPtr alpha_rowset = std::dynamic_pointer_cast<AlphaRowset>(rowset);
     for (auto& segment_group : alpha_rowset->_segment_groups) {
         RETURN_NOT_OK(_init());
-        RETURN_NOT_OK(segment_group->link_segments_to_path(
-                _rowset_writer_context.path_desc.filepath, _rowset_writer_context.rowset_id));
+        RETURN_NOT_OK(segment_group->link_segments_to_path(_rowset_writer_context.tablet_path,
+                                                           _rowset_writer_context.rowset_id));
         _cur_segment_group->set_empty(segment_group->empty());
         _cur_segment_group->set_num_segments(segment_group->num_segments());
         _cur_segment_group->add_zone_maps_for_linked_schema_change(segment_group->get_zone_maps(),
@@ -131,11 +131,6 @@ Status AlphaRowsetWriter::add_rowset_for_linked_schema_change(RowsetSharedPtr ro
         _num_rows_written += segment_group->num_rows();
     }
     return Status::OK();
-}
-
-Status AlphaRowsetWriter::add_rowset_for_migration(RowsetSharedPtr rowset) {
-    LOG(WARNING) << "alpha_rowset_writer doesn't support add_rowset_for_migration";
-    return Status::NotSupported("alpha_rowset_writer doesn't support add_rowset_for_migration");
 }
 
 Status AlphaRowsetWriter::flush() {
@@ -226,7 +221,7 @@ RowsetSharedPtr AlphaRowsetWriter::build() {
 
     RowsetSharedPtr rowset;
     auto status = RowsetFactory::create_rowset(_rowset_writer_context.tablet_schema,
-                                               _rowset_writer_context.path_desc,
+                                               _rowset_writer_context.tablet_path,
                                                _current_rowset_meta, &rowset);
     if (!status.ok()) {
         LOG(WARNING) << "rowset init failed when build new rowset, res=" << status;
@@ -254,15 +249,15 @@ Status AlphaRowsetWriter::_init() {
         return Status::OK();
     }
     if (_is_pending_rowset) {
-        _cur_segment_group = new (std::nothrow) SegmentGroup(
-                _rowset_writer_context.tablet_id, _rowset_writer_context.rowset_id,
-                _rowset_writer_context.tablet_schema, _rowset_writer_context.path_desc.filepath,
-                false, _segment_group_id, 0, true, _rowset_writer_context.partition_id,
-                _rowset_writer_context.txn_id);
+        _cur_segment_group = new (std::nothrow)
+                SegmentGroup(_rowset_writer_context.tablet_id, _rowset_writer_context.rowset_id,
+                             _rowset_writer_context.tablet_schema,
+                             _rowset_writer_context.tablet_path, false, _segment_group_id, 0, true,
+                             _rowset_writer_context.partition_id, _rowset_writer_context.txn_id);
     } else {
         _cur_segment_group = new (std::nothrow) SegmentGroup(
                 _rowset_writer_context.tablet_id, _rowset_writer_context.rowset_id,
-                _rowset_writer_context.tablet_schema, _rowset_writer_context.path_desc.filepath,
+                _rowset_writer_context.tablet_schema, _rowset_writer_context.tablet_path,
                 _rowset_writer_context.version, false, _segment_group_id, 0);
     }
     DCHECK(_cur_segment_group != nullptr) << "failed to malloc SegmentGroup";

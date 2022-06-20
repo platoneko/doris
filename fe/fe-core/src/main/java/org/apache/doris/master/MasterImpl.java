@@ -641,6 +641,7 @@ public class MasterImpl {
         long version = tTabletInfo.getVersion();
         long rowCount = tTabletInfo.getRowCount();
         long dataSize = tTabletInfo.getDataSize();
+        long remoteDataSize = tTabletInfo.getRemoteDataSize();
 
         if (indexId != pushIndexId) {
             // this may be a rollup tablet
@@ -673,11 +674,11 @@ public class MasterImpl {
             throw new MetaNotFoundException("cannot find replica in tablet[" + tabletId + "], backend[" + backendId
                     + "]");
         }
-        replica.updateVersionInfo(version, dataSize, rowCount);
+        replica.updateVersionInfo(version, dataSize, remoteDataSize, rowCount);
 
         LOG.debug("replica[{}] report schemaHash:{}", replica.getId(), schemaHash);
         return ReplicaPersistInfo.createForLoad(olapTable.getId(), partition.getId(), pushIndexId, tabletId,
-                replica.getId(), version, schemaHash, dataSize, rowCount);
+                replica.getId(), version, schemaHash, dataSize, remoteDataSize, rowCount);
     }
 
     private void finishDropReplica(AgentTask task) {

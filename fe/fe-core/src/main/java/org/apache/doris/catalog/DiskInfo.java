@@ -53,6 +53,17 @@ public class DiskInfo implements Writable {
     private DiskState state;
     // path hash and storage medium are reported from Backend and no need to persist
     private long pathHash = 0;
+
+    public long getRemoteUsedCapacity() {
+        return remoteUsedCapacity;
+    }
+
+    public void setRemoteUsedCapacity(long remoteUsedCapacity) {
+        this.remoteUsedCapacity = remoteUsedCapacity;
+    }
+
+    @SerializedName("remoteUsedCapacity")
+    private long remoteUsedCapacity = 0;
     private TStorageMedium storageMedium;
 
     private DiskInfo() {
@@ -67,6 +78,7 @@ public class DiskInfo implements Writable {
         this.state = DiskState.ONLINE;
         this.pathHash = 0;
         this.storageMedium = TStorageMedium.HDD;
+        this.remoteUsedCapacity = 0;
     }
 
     public String getRootPath() {
@@ -163,7 +175,8 @@ public class DiskInfo implements Writable {
     public String toString() {
         return "DiskInfo [rootPath=" + rootPath + "(" + pathHash + "), totalCapacityB=" + totalCapacityB
                 + ", dataUsedCapacityB=" + dataUsedCapacityB + ", diskAvailableCapacityB="
-                + diskAvailableCapacityB + ", state=" + state + ", medium: " + storageMedium + "]";
+                + diskAvailableCapacityB + ", state=" + state + ", medium: " + storageMedium
+                + "remoteUsedCapacity=" + remoteUsedCapacity + "]";
     }
 
     @Override

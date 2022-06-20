@@ -222,6 +222,7 @@ public class RollupJobV2Test {
             for (Replica shadowReplica : shadowTablet.getReplicas()) {
                 shadowReplica.updateVersionInfo(testPartition.getVisibleVersion(),
                         shadowReplica.getDataSize(),
+                        shadowReplica.getRemoteDataSize(),
                         shadowReplica.getRowCount());
             }
         }
@@ -301,6 +302,7 @@ public class RollupJobV2Test {
             for (Replica shadowReplica : shadowTablet.getReplicas()) {
                 shadowReplica.updateVersionInfo(testPartition.getVisibleVersion(),
                         shadowReplica.getDataSize(),
+                        shadowReplica.getRemoteDataSize(),
                         shadowReplica.getRowCount());
             }
         }

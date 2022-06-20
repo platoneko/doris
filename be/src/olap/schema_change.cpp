@@ -1104,6 +1104,8 @@ Status SchemaChangeWithSorting::_inner_process(RowsetReaderSharedPtr rowset_read
     _temp_delta_versions.first = _temp_delta_versions.second;
 
     SegmentsOverlapPB segments_overlap = rowset->rowset_meta()->segments_overlap();
+    int64_t oldest_write_timestamp = rowset->oldest_write_timestamp();
+    int64_t newest_write_timestamp = rowset->newest_write_timestamp();
     RowBlock* ref_row_block = nullptr;
     rowset_reader->next_block(&ref_row_block);
     while (ref_row_block != nullptr && ref_row_block->has_remaining()) {
@@ -1135,7 +1137,8 @@ Status SchemaChangeWithSorting::_inner_process(RowsetReaderSharedPtr rowset_read
             if (!_internal_sorting(
                         row_block_arr,
                         Version(_temp_delta_versions.second, _temp_delta_versions.second),
-                        new_tablet, segments_overlap, &rowset)) {
+                        oldest_write_timestamp, newest_write_timestamp, new_tablet,
+                        segments_overlap, &rowset)) {
                 LOG(WARNING) << "failed to sorting internally.";
                 return Status::OLAPInternalError(OLAP_ERR_ALTER_STATUS_ERR);
             }
@@ -1186,7 +1189,8 @@ Status SchemaChangeWithSorting::_inner_process(RowsetReaderSharedPtr rowset_read
 
         if (!_internal_sorting(row_block_arr,
                                Version(_temp_delta_versions.second, _temp_delta_versions.second),
-                               new_tablet, segments_overlap, &rowset)) {
+                               oldest_write_timestamp, newest_write_timestamp, new_tablet,
+                               segments_overlap, &rowset)) {
             LOG(WARNING) << "failed to sorting internally.";
             return Status::OLAPInternalError(OLAP_ERR_ALTER_STATUS_ERR);
         }
@@ -1219,10 +1223,10 @@ Status SchemaChangeWithSorting::_inner_process(RowsetReaderSharedPtr rowset_read
     return res;
 }
 
-bool SchemaChangeWithSorting::_internal_sorting(const std::vector<RowBlock*>& row_block_arr,
-                                                const Version& version, TabletSharedPtr new_tablet,
-                                                SegmentsOverlapPB segments_overlap,
-                                                RowsetSharedPtr* rowset) {
+bool SchemaChangeWithSorting::_internal_sorting(
+        const std::vector<RowBlock*>& row_block_arr, const Version& version,
+        int64_t oldest_write_timestamp, int64_t newest_write_timestamp, TabletSharedPtr new_tablet,
+        SegmentsOverlapPB segments_overlap, RowsetSharedPtr* rowset) {
     uint64_t merged_rows = 0;
     RowBlockMerger merger(new_tablet);
 
@@ -1230,7 +1234,9 @@ bool SchemaChangeWithSorting::_internal_sorting(const std::vector<RowBlock*>& ro
                 << ", block_row_size=" << new_tablet->num_rows_per_row_block();
 
     std::unique_ptr<RowsetWriter> rowset_writer;
-    if (!new_tablet->create_rowset_writer(version, VISIBLE, segments_overlap, &rowset_writer)) {
+    if (!new_tablet->create_rowset_writer(version, VISIBLE, segments_overlap,
+                                          oldest_write_timestamp, newest_write_timestamp,
+                                          &rowset_writer)) {
         return false;
     }
 
@@ -1757,8 +1763,10 @@ Status SchemaChangeHandler::_convert_historical_rowsets(const SchemaChangeParams
         std::unique_ptr<RowsetWriter> rowset_writer;
         Status status = new_tablet->create_rowset_writer(
                 rs_reader->version(), VISIBLE,
-                rs_reader->rowset()->rowset_meta()->segments_overlap(), &rowset_writer);
-        if (!status) {
+                rs_reader->rowset()->rowset_meta()->segments_overlap(),
+                rs_reader->oldest_write_timestamp(), rs_reader->newest_write_timestamp(),
+                &rowset_writer);
+        if (!status.ok()) {
             res = Status::OLAPInternalError(OLAP_ERR_ROWSET_BUILDER_INIT);
             return process_alter_exit();
         }

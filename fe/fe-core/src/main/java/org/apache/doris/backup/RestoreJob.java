@@ -973,7 +973,8 @@ public class RestoreJob extends AbstractJob {
                             localTbl.getCopiedIndexes(),
                             localTbl.isInMemory(),
                             localTbl.getPartitionInfo().getTabletType(restorePart.getId()),
-                            localTbl.getCompressionType());
+                            localTbl.getCompressionType(),
+                            localTbl.getStoragePolicy());
                     task.setInRestoreMode(true);
                     batchTask.addTask(task);
                 }
@@ -1450,9 +1451,9 @@ public class RestoreJob extends AbstractJob {
                     for (MaterializedIndex idx : part.getMaterializedIndices(IndexExtState.VISIBLE)) {
                         for (Tablet tablet : idx.getTablets()) {
                             for (Replica replica : tablet.getReplicas()) {
-                                if (!replica.checkVersionCatchUp(part.getVisibleVersion(), false)) {
-                                    replica.updateVersionInfo(part.getVisibleVersion(),
-                                            replica.getDataSize(), replica.getRowCount());
+                                if (!replica.checkVersionCatchUp(part.getVisibleVersion(),false)) {
+                                    replica.updateVersionInfo(part.getVisibleVersion(), replica.getDataSize(),
+                                            replica.getRemoteDataSize(), replica.getRowCount());
                                 }
                             }
                         }

@@ -27,9 +27,9 @@
 
 namespace doris {
 
-AlphaRowset::AlphaRowset(const TabletSchema* schema, const FilePathDesc& rowset_path_desc,
+AlphaRowset::AlphaRowset(const TabletSchema* schema, const std::string& tablet_path,
                          RowsetMetaSharedPtr rowset_meta)
-        : Rowset(schema, rowset_path_desc, std::move(rowset_meta)) {}
+        : Rowset(schema, tablet_path, std::move(rowset_meta)) {}
 
 Status AlphaRowset::do_load(bool use_cache) {
     for (auto& segment_group : _segment_groups) {
@@ -90,9 +90,9 @@ void AlphaRowset::make_visible_extra(Version version) {
     }
 }
 
-Status AlphaRowset::link_files_to(const FilePathDesc& dir_desc, RowsetId new_rowset_id) {
+Status AlphaRowset::link_files_to(const std::string& dir, RowsetId new_rowset_id) {
     for (auto& segment_group : _segment_groups) {
-        auto status = segment_group->link_segments_to_path(dir_desc.filepath, new_rowset_id);
+        auto status = segment_group->link_segments_to_path(dir, new_rowset_id);
         if (!status.ok()) {
             LOG(WARNING) << "create hard links failed for segment group:"
                          << segment_group->segment_group_id();
@@ -309,15 +309,14 @@ Status AlphaRowset::init() {
         std::shared_ptr<SegmentGroup> segment_group;
         if (_is_pending) {
             segment_group.reset(new SegmentGroup(
-                    _rowset_meta->tablet_id(), _rowset_meta->rowset_id(), _schema,
-                    _rowset_path_desc.filepath, false, segment_group_meta.segment_group_id(),
-                    segment_group_meta.num_segments(), true, _rowset_meta->partition_id(),
-                    _rowset_meta->txn_id()));
+                    _rowset_meta->tablet_id(), _rowset_meta->rowset_id(), _schema, _tablet_path,
+                    false, segment_group_meta.segment_group_id(), segment_group_meta.num_segments(),
+                    true, _rowset_meta->partition_id(), _rowset_meta->txn_id()));
         } else {
             segment_group.reset(new SegmentGroup(
-                    _rowset_meta->tablet_id(), _rowset_meta->rowset_id(), _schema,
-                    _rowset_path_desc.filepath, _rowset_meta->version(), false,
-                    segment_group_meta.segment_group_id(), segment_group_meta.num_segments()));
+                    _rowset_meta->tablet_id(), _rowset_meta->rowset_id(), _schema, _tablet_path,
+                    _rowset_meta->version(), false, segment_group_meta.segment_group_id(),
+                    segment_group_meta.num_segments()));
         }
         if (segment_group == nullptr) {
             LOG(WARNING) << "fail to create olap segment_group. rowset_id='"

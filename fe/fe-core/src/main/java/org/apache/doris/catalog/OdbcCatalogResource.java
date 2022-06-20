@@ -92,6 +92,11 @@ public class OdbcCatalogResource extends Resource {
     }
 
     @Override
+    public Map<String, String> getCopiedProperties() {
+        return Maps.newHashMap(configs);
+    }
+
+    @Override
     public void modifyProperties(Map<String, String> properties) throws DdlException {
         // modify properties
         replaceIfEffectiveValue(this.configs, HOST, properties.get(HOST));
@@ -116,12 +121,6 @@ public class OdbcCatalogResource extends Resource {
         if (!copiedProperties.isEmpty()) {
             throw new AnalysisException("Unknown ODBC catalog resource properties: " + copiedProperties);
         }
-    }
-
-    @Override
-    public Map<String, String> getCopiedProperties() {
-        Map<String, String> copiedProperties = Maps.newHashMap(configs);
-        return copiedProperties;
     }
 
     public String getProperty(String propertiesKey)  {

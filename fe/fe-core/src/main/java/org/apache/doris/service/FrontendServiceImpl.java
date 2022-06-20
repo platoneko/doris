@@ -25,6 +25,7 @@ import org.apache.doris.catalog.Database;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.Table;
 import org.apache.doris.catalog.TableIf.TableType;
+import org.apache.doris.catalog.Resource;
 import org.apache.doris.cluster.ClusterNamespace;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.AuthenticationException;
@@ -109,6 +110,9 @@ import org.apache.doris.thrift.TUpdateExportTaskStatusRequest;
 import org.apache.doris.thrift.TUpdateMiniEtlTaskStatusRequest;
 import org.apache.doris.thrift.TWaitingTxnStatusRequest;
 import org.apache.doris.thrift.TWaitingTxnStatusResult;
+import org.apache.doris.thrift.TGetStoragePolicyResult;
+import org.apache.doris.thrift.TGetStoragePolicy;
+import org.apache.doris.thrift.TS3StorageParam;
 import org.apache.doris.transaction.DatabaseTransactionMgr;
 import org.apache.doris.transaction.TabletCommitInfo;
 import org.apache.doris.transaction.TransactionState;
@@ -127,10 +131,29 @@ import org.apache.thrift.TException;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
+import static org.apache.doris.catalog.Resource.ResourceType.STORAGE_POLICY;
+import static org.apache.doris.catalog.StoragePolicyResource.COOLDOWN_DATETIME;
+import static org.apache.doris.catalog.StoragePolicyResource.COOLDOWN_TTL;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_ENDPOINT;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_REGION;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_ROOTPATH;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_AK;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_SK;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_BUCKET;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_MAXCONN;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_REQUESTTIMEOUTMS;
+import static org.apache.doris.catalog.StoragePolicyResource.S3_CONNTIMEOUTMS;
+import static org.apache.doris.catalog.StoragePolicyResource.MD5_CHECKSUM;
+
+import static org.apache.doris.thrift.TStatusCode.NOT_IMPLEMENTED_ERROR;
 
 // Frontend service used to serve all request for this frontend through
 // thrift protocol
@@ -1199,4 +1222,51 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         return result;
     }
 
+    @Override
+    public TGetStoragePolicyResult refreshStoragePolicy() throws TException {
+        LOG.debug("refresh storage policy request");
+        TGetStoragePolicyResult result = new TGetStoragePolicyResult();
+        TStatus status = new TStatus(TStatusCode.OK);
+        result.setStatus(status);
+
+        Map<String, Resource> storagePolicyMap = Catalog.getCurrentCatalog().getResourceMgr().getResourceByType(STORAGE_POLICY);
+        for (Map.Entry<String, Resource> entry : storagePolicyMap.entrySet()){
+            Map<String, String> storagePolicyProperties = entry.getValue().getCopiedProperties();
+            // 9999-01-01 00:00:00 => unix timestamp
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            Date date = null;
+            try {
+                date = dateFormat.parse(storagePolicyProperties.get(COOLDOWN_DATETIME));
+            } catch (ParseException e) {
+                e.printStackTrace();
+                result.status.setStatusCode(TStatusCode.INTERNAL_ERROR);
+                result.status.addToErrorMsgs("date to timestamp error : " + storagePolicyProperties.get(COOLDOWN_DATETIME));
+                LOG.warn("date to timestamp error : ", storagePolicyProperties.get(COOLDOWN_DATETIME));
+                continue;
+            }
+
+            long secondTimestamp = date.getTime() / 1000;
+            TGetStoragePolicy rEntry = new TGetStoragePolicy();
+            rEntry.setPolicyName(entry.getKey());
+            rEntry.setCooldownDatetime(secondTimestamp);
+            rEntry.setMd5Checksum(storagePolicyProperties.get(MD5_CHECKSUM));
+            // "3600" => 3600
+            rEntry.setCooldownTtl(Integer.parseInt(storagePolicyProperties.get(COOLDOWN_TTL)));
+            TS3StorageParam s3Info = new TS3StorageParam();
+            s3Info.setS3Endpoint(storagePolicyProperties.get(S3_ENDPOINT));
+            s3Info.setS3Region(storagePolicyProperties.get(S3_REGION));
+            s3Info.setRootPath(storagePolicyProperties.get(S3_ROOTPATH));
+            s3Info.setS3Ak(storagePolicyProperties.get(S3_AK));
+            s3Info.setS3Sk(storagePolicyProperties.get(S3_SK));
+            s3Info.setBucket(storagePolicyProperties.get(S3_BUCKET));
+            s3Info.setS3MaxConn(Integer.parseInt(storagePolicyProperties.get(S3_MAXCONN)));
+            s3Info.setS3RequestTimeoutMs(Integer.parseInt(storagePolicyProperties.get(S3_REQUESTTIMEOUTMS)));
+            s3Info.setS3ConnTimeoutMs(Integer.parseInt(storagePolicyProperties.get(S3_CONNTIMEOUTMS)));
+            rEntry.setS3StorageParam(s3Info);
+            result.addToResultEntrys(rEntry);
+        }
+        LOG.debug("refresh storage policy response: {}", result);
+
+        return result;
+    }
 }
