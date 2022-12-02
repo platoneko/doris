@@ -707,7 +707,7 @@ Status FragmentMgr::exec_pipeline(const TExecPlanFragmentParams& params) {
         // 提交失败也不能移出，可能有些pipeline task提交成功，有些失败，要等所有task都结束才能移除。
         context->cancel(PPlanFragmentCancelReason::INTERNAL_ERROR, "submit context fail");
         remove_pipeline_context(context);
-        return Status::InternalError("Submit pipeline failed. err = {}, BE: {}", st,
+        return Status::InternalError("Submit pipeline failed. err = {}, BE: {}", st.to_string(),
                                      BackendOptions::get_localhost());
     }
     return Status::OK();
