@@ -28,6 +28,7 @@
 #include "util/thrift_rpc_helper.h"
 
 namespace doris {
+using namespace ErrorCode;
 
 #ifdef BE_TEST
 TLoadTxnBeginResult k_stream_load_begin_result;
@@ -200,7 +201,7 @@ Status StreamLoadExecutor::pre_commit_txn(StreamLoadContext* ctx) {
     Status status(result.status);
     if (!status.ok()) {
         LOG(WARNING) << "precommit transaction failed, errmsg=" << status << ctx->brief();
-        if (status.is<E_PUBLISH_TIMEOUT>()) {
+        if (status.is<PUBLISH_TIMEOUT>()) {
             ctx->need_rollback = false;
         }
         return status;
@@ -281,7 +282,7 @@ Status StreamLoadExecutor::commit_txn(StreamLoadContext* ctx) {
     Status status(result.status);
     if (!status.ok()) {
         LOG(WARNING) << "commit transaction failed, errmsg=" << status << ", " << ctx->brief();
-        if (status.is<E_PUBLISH_TIMEOUT>()) {
+        if (status.is<PUBLISH_TIMEOUT>()) {
             ctx->need_rollback = false;
         }
         return status;

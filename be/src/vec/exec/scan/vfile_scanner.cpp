@@ -527,7 +527,7 @@ Status VFileScanner::_get_next_reader() {
             return Status::InternalError("Not supported file format: {}", _params.format_type);
         }
 
-        if (init_status.is<E_END_OF_FILE>()) {
+        if (init_status.is<END_OF_FILE>()) {
             continue;
         } else if (!init_status.ok()) {
             return Status::InternalError("failed to init reader for file {}, err: {}", range.path,
