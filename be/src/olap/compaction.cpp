@@ -189,12 +189,7 @@ void Compaction::build_basic_info() {
 
     _oldest_write_timestamp = _input_rowsets.front()->oldest_write_timestamp();
     _newest_write_timestamp = _input_rowsets.back()->newest_write_timestamp();
-
-    std::vector<RowsetMetaSharedPtr> rowset_metas(_input_rowsets.size());
-    std::transform(_input_rowsets.begin(), _input_rowsets.end(), rowset_metas.begin(),
-                   [](const RowsetSharedPtr& rowset) { return rowset->rowset_meta(); });
-    _cur_tablet_schema =
-            _tablet->rowset_meta_with_max_schema_version(rowset_metas)->tablet_schema();
+    _cur_tablet_schema = _tablet->rowset_with_max_schema_version(_input_rowsets)->tablet_schema();
 }
 
 bool Compaction::handle_ordered_data_compaction() {

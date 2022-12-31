@@ -33,7 +33,7 @@ class DataDir;
 // Base class for all tablet classes, currently only olap/Tablet
 // The fields and methods in this class is not final, it will change as memory
 // storage engine evolves.
-class BaseTablet : public std::enable_shared_from_this<BaseTablet> {
+class BaseTablet {
 public:
     BaseTablet(TabletMetaSharedPtr tablet_meta, DataDir* data_dir);
     virtual ~BaseTablet();
@@ -41,7 +41,7 @@ public:
     DataDir* data_dir() const;
     const std::string& tablet_path() const;
 
-    TabletState tablet_state() const { return _state; }
+    TabletState tablet_state() const { return _tablet_meta->tablet_state(); }
     Status set_tablet_state(TabletState state);
 
     // Property encapsulated in TabletMeta
@@ -69,11 +69,10 @@ public:
 
     bool set_tablet_schema_into_rowset_meta();
 
-protected:
+private:
     void _gen_tablet_path();
 
 protected:
-    TabletState _state;
     TabletMetaSharedPtr _tablet_meta;
     TabletSchemaSPtr _schema;
 

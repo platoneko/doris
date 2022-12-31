@@ -598,12 +598,8 @@ Status TabletReader::init_reader_params_and_create_block(
         RETURN_NOT_OK(rowset->create_reader(&rs_reader));
         reader_params->rs_readers.push_back(std::move(rs_reader));
     }
-
-    std::vector<RowsetMetaSharedPtr> rowset_metas(input_rowsets.size());
-    std::transform(input_rowsets.begin(), input_rowsets.end(), rowset_metas.begin(),
-                   [](const RowsetSharedPtr& rowset) { return rowset->rowset_meta(); });
     TabletSchemaSPtr read_tablet_schema =
-            tablet->rowset_meta_with_max_schema_version(rowset_metas)->tablet_schema();
+            tablet->rowset_with_max_schema_version(input_rowsets)->tablet_schema();
     TabletSchemaSPtr merge_tablet_schema = std::make_shared<TabletSchema>();
     merge_tablet_schema->copy_from(*read_tablet_schema);
     {

@@ -107,13 +107,9 @@ public:
                                                   int64_t tablet_id);
     Status save_meta(DataDir* data_dir);
 
-    Status serialize(std::string* meta_binary);
-    Status deserialize(const std::string& meta_binary);
     void init_from_pb(const TabletMetaPB& tablet_meta_pb);
-    // Init `RowsetMeta._fs` if rowset is local.
-    void init_rs_metas_fs(const io::FileSystemSPtr& fs);
 
-    void to_meta_pb(TabletMetaPB* tablet_meta_pb);
+    void to_meta_pb(TabletMetaPB* tablet_meta_pb, const std::vector<RowsetMetaSharedPtr>& rs_metas);
     void to_json(std::string* json_string, json2pb::Pb2JsonOptions& options);
     uint32_t mem_size() const;
 
@@ -131,16 +127,6 @@ public:
     int64_t cumulative_layer_point() const;
     void set_cumulative_layer_point(int64_t new_point);
 
-    size_t num_rows() const;
-    // Disk space occupied by tablet, contain local and remote.
-    size_t tablet_footprint() const;
-    // Local disk space occupied by tablet.
-    size_t tablet_local_size() const;
-    // Remote disk space occupied by tablet.
-    size_t tablet_remote_size() const;
-    size_t version_count() const;
-    Version max_version() const;
-
     TabletState tablet_state() const;
     void set_tablet_state(TabletState state);
 
@@ -153,25 +139,9 @@ public:
 
     TabletSchema* mutable_tablet_schema();
 
-    const std::vector<RowsetMetaSharedPtr>& all_rs_metas() const;
-    std::vector<RowsetMetaSharedPtr>& all_mutable_rs_metas();
-    Status add_rs_meta(const RowsetMetaSharedPtr& rs_meta);
-    void delete_rs_meta_by_version(const Version& version,
-                                   std::vector<RowsetMetaSharedPtr>* deleted_rs_metas);
-    // If same_version is true, the rowset in "to_delete" will not be added
-    // to _stale_rs_meta, but to be deleted from rs_meta directly.
-    void modify_rs_metas(const std::vector<RowsetMetaSharedPtr>& to_add,
-                         const std::vector<RowsetMetaSharedPtr>& to_delete,
-                         bool same_version = false);
-    void revise_rs_metas(std::vector<RowsetMetaSharedPtr>&& rs_metas);
-    void revise_delete_bitmap_unlocked(const DeleteBitmap& delete_bitmap);
-
-    const std::vector<RowsetMetaSharedPtr>& all_stale_rs_metas() const;
-    RowsetMetaSharedPtr acquire_rs_meta_by_version(const Version& version) const;
-    void delete_stale_rs_meta_by_version(const Version& version);
-    RowsetMetaSharedPtr acquire_stale_rs_meta_by_version(const Version& version) const;
-    const std::vector<RowsetMetaSharedPtr> delete_predicates() const;
-    bool version_for_delete_predicate(const Version& version);
+    void revise_delete_bitmap_unlocked(const DeleteBitmap& delete_bitmap,
+                                       const std::vector<RowsetMetaSharedPtr>& rs_metas,
+                                       const std::vector<RowsetMetaSharedPtr>& stale_rs_metas);
 
     std::string full_name() const;
 
@@ -182,11 +152,6 @@ public:
     void set_preferred_rowset_type(RowsetTypePB preferred_rowset_type) {
         _preferred_rowset_type = preferred_rowset_type;
     }
-
-    // used for after tablet cloned to clear stale rowset
-    void clear_stale_rowset() { _stale_rs_metas.clear(); }
-
-    bool all_beta() const;
 
     const std::string& storage_policy() const {
         std::shared_lock<std::shared_mutex> rlock(_meta_lock);
@@ -234,11 +199,6 @@ private:
     // the lifetime of tablemeta and _schema is same with tablet
     TabletSchemaSPtr _schema;
 
-    std::vector<RowsetMetaSharedPtr> _rs_metas;
-    // This variable _stale_rs_metas is used to record these rowsets‘ meta which are be compacted.
-    // These stale rowsets meta are been removed when rowsets' pathVersion is expired,
-    // this policy is judged and computed by TimestampedVersionTracker.
-    std::vector<RowsetMetaSharedPtr> _stale_rs_metas;
     bool _in_restore_mode = false;
     RowsetTypePB _preferred_rowset_type = BETA_ROWSET;
 
@@ -469,46 +429,6 @@ inline void TabletMeta::set_cumulative_layer_point(int64_t new_point) {
     _cumulative_layer_point = new_point;
 }
 
-inline size_t TabletMeta::num_rows() const {
-    size_t num_rows = 0;
-    for (auto& rs : _rs_metas) {
-        num_rows += rs->num_rows();
-    }
-    return num_rows;
-}
-
-inline size_t TabletMeta::tablet_footprint() const {
-    size_t total_size = 0;
-    for (auto& rs : _rs_metas) {
-        total_size += rs->data_disk_size();
-    }
-    return total_size;
-}
-
-inline size_t TabletMeta::tablet_local_size() const {
-    size_t total_size = 0;
-    for (auto& rs : _rs_metas) {
-        if (rs->is_local()) {
-            total_size += rs->data_disk_size();
-        }
-    }
-    return total_size;
-}
-
-inline size_t TabletMeta::tablet_remote_size() const {
-    size_t total_size = 0;
-    for (auto& rs : _rs_metas) {
-        if (!rs->is_local()) {
-            total_size += rs->data_disk_size();
-        }
-    }
-    return total_size;
-}
-
-inline size_t TabletMeta::version_count() const {
-    return _rs_metas.size();
-}
-
 inline TabletState TabletMeta::tablet_state() const {
     return _tablet_state;
 }
@@ -531,32 +451,6 @@ inline TabletSchemaSPtr TabletMeta::tablet_schema() const {
 
 inline TabletSchema* TabletMeta::mutable_tablet_schema() {
     return _schema.get();
-}
-
-inline const std::vector<RowsetMetaSharedPtr>& TabletMeta::all_rs_metas() const {
-    return _rs_metas;
-}
-
-inline std::vector<RowsetMetaSharedPtr>& TabletMeta::all_mutable_rs_metas() {
-    return _rs_metas;
-}
-
-inline const std::vector<RowsetMetaSharedPtr>& TabletMeta::all_stale_rs_metas() const {
-    return _stale_rs_metas;
-}
-
-inline bool TabletMeta::all_beta() const {
-    for (auto& rs : _rs_metas) {
-        if (rs->rowset_type() != RowsetTypePB::BETA_ROWSET) {
-            return false;
-        }
-    }
-    for (auto& rs : _stale_rs_metas) {
-        if (rs->rowset_type() != RowsetTypePB::BETA_ROWSET) {
-            return false;
-        }
-    }
-    return true;
 }
 
 // Only for unit test now.

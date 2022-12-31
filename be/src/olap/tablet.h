@@ -62,14 +62,10 @@ enum TabletStorageType { STORAGE_TYPE_LOCAL, STORAGE_TYPE_REMOTE, STORAGE_TYPE_R
 
 class Tablet : public BaseTablet {
 public:
-    static TabletSharedPtr create_tablet_from_meta(TabletMetaSharedPtr tablet_meta,
-                                                   DataDir* data_dir = nullptr);
-
-    Tablet(TabletMetaSharedPtr tablet_meta, DataDir* data_dir,
-           const std::string& cumulative_compaction_type = "");
-
-    Status init();
-    bool init_succeeded();
+    // restore tablet from binary
+    static TabletSharedPtr create(const TabletMetaPB& tablet_meta_pb, DataDir* data_dir);
+    // create new tablet
+    static TabletSharedPtr create(const TabletMetaSharedPtr& tablet_meta, DataDir* data_dir);
 
     bool is_used();
 
@@ -129,8 +125,8 @@ public:
 
     const RowsetSharedPtr rowset_with_max_version() const;
 
-    static RowsetMetaSharedPtr rowset_meta_with_max_schema_version(
-            const std::vector<RowsetMetaSharedPtr>& rowset_metas);
+    static RowsetSharedPtr rowset_with_max_schema_version(
+            const std::vector<RowsetSharedPtr>& rowset_metas);
 
     Status add_inc_rowset(const RowsetSharedPtr& rowset);
     /// Delete stale rowset by timing. This delete policy uses now() minutes
@@ -139,14 +135,9 @@ public:
     /// need to delete flag.
     void delete_expired_stale_rowset();
 
-    // Given spec_version, find a continuous version path and store it in version_path.
-    // If quiet is true, then only "does this path exist" is returned.
-    Status capture_consistent_versions(const Version& spec_version,
-                                       std::vector<Version>* version_path,
-                                       bool quiet = false) const;
     // if quiet is true, no error log will be printed if there are missing versions
     Status check_version_integrity(const Version& version, bool quiet = false);
-    bool check_version_exist(const Version& version) const;
+    bool contains_version(const Version& version) const;
     void acquire_version_and_rowsets(
             std::vector<std::pair<Version, RowsetSharedPtr>>* version_rowsets) const;
 
@@ -155,13 +146,9 @@ public:
     Status capture_rs_readers(const Version& spec_version,
                               std::vector<RowsetReaderSharedPtr>* rs_readers) const;
 
-    Status capture_rs_readers(const std::vector<Version>& version_path,
-                              std::vector<RowsetReaderSharedPtr>* rs_readers) const;
-
     const std::vector<RowsetMetaSharedPtr> delete_predicates() {
         return _tablet_meta->delete_predicates();
     }
-    bool version_for_delete_predicate(const Version& version);
 
     // meta lock
     std::shared_mutex& get_header_lock() { return _meta_lock; }
@@ -187,12 +174,7 @@ public:
 
     // This function to find max continuous version from the beginning.
     // For example: If there are 1, 2, 3, 5, 6, 7 versions belongs tablet, then 3 is target.
-    // 3 will be saved in "version", and 7 will be saved in "max_version", if max_version != nullptr
-    void max_continuous_version_from_beginning(Version* version, Version* max_version = nullptr);
-
-    // operation for query
-    Status split_range(const OlapTuple& start_key_strings, const OlapTuple& end_key_strings,
-                       uint64_t request_block_row_count, std::vector<OlapTuple>* ranges);
+    void max_continuous_version_from_beginning(Version* version);
 
     void set_bad(bool is_bad) { _is_bad = is_bad; }
 
@@ -345,22 +327,18 @@ public:
     bool should_skip_compaction(CompactionType compaction_type, int64_t now);
 
 private:
-    Status _init_once_action();
+    Tablet(TabletMetaSharedPtr tablet_meta, DataDir* data_dir);
+    Status init(const TabletMetaPB& tablet_meta_pb);
+
+    void add_stale_path_version(const std::vector<RowsetSharedPtr>& rowsets);
+
     void _print_missed_versions(const std::vector<Version>& missed_versions) const;
-    bool _contains_rowset(const RowsetId rowset_id);
-    Status _contains_version(const Version& version);
 
     // Returns:
     // version: the max continuous version from beginning
     // max_version: the max version of this tablet
-    void _max_continuous_version_from_beginning_unlocked(Version* version, Version* max_version,
+    void _max_continuous_version_from_beginning_unlocked(Version* version, 
                                                          bool* has_version_cross) const;
-    RowsetSharedPtr _rowset_with_largest_size();
-    /// Delete stale rowset by version. This method not only delete the version in expired rowset map,
-    /// but also delete the version in rowset meta vector.
-    void _delete_stale_rowset_by_version(const Version& version);
-    Status _capture_consistent_rowsets_unlocked(const std::vector<Version>& version_path,
-                                                std::vector<RowsetSharedPtr>* rowsets) const;
 
     const uint32_t _calc_cumulative_compaction_score(
             std::shared_ptr<CumulativeCompactionPolicy> cumulative_compaction_policy);
@@ -384,9 +362,6 @@ public:
     static const int64_t K_INVALID_CUMULATIVE_POINT = -1;
 
 private:
-    TimestampedVersionTracker _timestamped_version_tracker;
-
-    DorisCallOnce<Status> _init_once;
     // meta store lock is used for prevent 2 threads do checkpoint concurrently
     // it will be used in econ-mode in the future
     std::shared_mutex _meta_store_lock;
@@ -396,8 +371,7 @@ private:
     std::mutex _schema_change_lock;
     std::shared_mutex _migration_lock;
 
-    // TODO(lingbin): There is a _meta_lock TabletMeta too, there should be a comment to
-    // explain how these two locks work together.
+    // protect rowsets related data structures
     mutable std::shared_mutex _meta_lock;
 
     // In unique key table with MoW, we should guarantee that only one
@@ -408,11 +382,23 @@ private:
 
     // After version 0.13, all newly created rowsets are saved in _rs_version_map.
     // And if rowset being compacted, the old rowsetis will be saved in _stale_rs_version_map;
-    std::unordered_map<Version, RowsetSharedPtr, HashOfVersion> _rs_version_map;
+    std::map<int64_t, RowsetSharedPtr> _rowsets;
     // This variable _stale_rs_version_map is used to record these rowsets which are be compacted.
     // These _stale rowsets are been removed when rowsets' pathVersion is expired,
     // this policy is judged and computed by TimestampedVersionTracker.
-    std::unordered_map<Version, RowsetSharedPtr, HashOfVersion> _stale_rs_version_map;
+    struct VersionCmp {
+        constexpr bool operator()(const Version& lhs, const Version& rhs) const {
+            if (lhs.second == rhs.second) return lhs.first < rhs.first;
+            return lhs.second < rhs.second;
+        }
+    };
+    std::map<Version, RowsetSharedPtr, VersionCmp> _stale_rowsets;
+    // record versions of merged rowsets. These rowsets are tracked and removed after they are expired.
+    struct StaleVersionPath {
+        Versions versions;
+        int64_t ctime;
+    };
+    std::vector<StaleVersionPath> _stale_paths;
     // RowsetTree is used to locate rowsets containing a key or a key range quickly.
     // It's only used in UNIQUE_KEYS data model.
     std::unique_ptr<RowsetTree> _rowset_tree;
@@ -433,7 +419,6 @@ private:
 
     // cumulative compaction policy
     std::shared_ptr<CumulativeCompactionPolicy> _cumulative_compaction_policy;
-    std::string _cumulative_compaction_type;
 
     std::shared_ptr<CumulativeCompaction> _cumulative_compaction;
     std::shared_ptr<BaseCompaction> _base_compaction;
@@ -465,10 +450,6 @@ public:
 
 inline CumulativeCompactionPolicy* Tablet::cumulative_compaction_policy() {
     return _cumulative_compaction_policy.get();
-}
-
-inline bool Tablet::init_succeeded() {
-    return _init_once.has_called() && _init_once.stored_result().ok();
 }
 
 inline bool Tablet::is_used() {
@@ -515,37 +496,66 @@ inline bool Tablet::enable_unique_key_merge_on_write() const {
 // TODO(lingbin): Why other methods that need to get information from _tablet_meta
 // are not locked, here needs a comment to explain.
 inline size_t Tablet::tablet_footprint() {
+    size_t total_size = 0;
     std::shared_lock rdlock(_meta_lock);
-    return _tablet_meta->tablet_footprint();
+    for (auto& [v, rs] : _rowsets) {
+        total_size += rs->data_disk_size();
+    }
+    return total_size;
 }
 
 inline size_t Tablet::tablet_local_size() {
+    size_t total_size = 0;
     std::shared_lock rdlock(_meta_lock);
-    return _tablet_meta->tablet_local_size();
+    for (auto& [v, rs] : _rowsets) {
+        if (rs->is_local()) {
+            total_size += rs->data_disk_size();
+        }
+    }
+    return total_size;
 }
 
 inline size_t Tablet::tablet_remote_size() {
+    size_t total_size = 0;
     std::shared_lock rdlock(_meta_lock);
-    return _tablet_meta->tablet_remote_size();
+    for (auto& [v, rs] : _rowsets) {
+        if (!rs->is_local()) {
+            total_size += rs->data_disk_size();
+        }
+    }
+    return total_size;
 }
 
 // TODO(lingbin): Why other methods which need to get information from _tablet_meta
 // are not locked, here needs a comment to explain.
 inline size_t Tablet::num_rows() {
+    size_t num_rows = 0;
     std::shared_lock rdlock(_meta_lock);
-    return _tablet_meta->num_rows();
+    for (auto& [v, rs] : _rowsets) {
+        num_rows += rs->num_rows();
+    }
+    return num_rows;
 }
 
 inline int Tablet::version_count() const {
-    return _tablet_meta->version_count();
+    return _rowsets.size();
 }
 
 inline Version Tablet::max_version() const {
-    return _tablet_meta->max_version();
+    {
+        std::shared_lock rdlock(_meta_lock);
+        if (auto it = _rowsets.rbegin(); it != _rowsets.rend()) {
+            return it->second->version();
+        }
+    }
+    return {-1, 0};
 }
 
 inline Version Tablet::max_version_unlocked() const {
-    return _tablet_meta->max_version();
+    if (auto it = _rowsets.rbegin(); it != _rowsets.rend()) {
+        return it->second->version();
+    }
+    return {-1, 0};
 }
 
 inline KeysType Tablet::keys_type() const {
