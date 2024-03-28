@@ -39,6 +39,44 @@ namespace doris::cloud {
 
 class Transaction;
 class RangeGetIterator;
+class TxnKv;
+
+/**
+ * Unlike `RangeGetIterator`, which can only iterate within a page of range, this iterator is
+ * capable of iterating over the entire specified range.
+ *
+ * Usage:
+ * for (auto kvp = it.next(); kvp.has_value(); kvp = it.next()) {
+ *     auto [k, v] = *kvp;
+ * }
+ * if (!it.is_valid()) {
+ *     return err;
+ * }
+ */
+struct FullRangeGetIteratorOptions {
+    // Trigger prefetch getting next batch kvs before access them
+    bool prefetch = false;
+    bool snapshot = true;
+    // Reference. If not null, each inner range get is performed through this transaction; otherwise
+    // perform each inner range get through a new transaction.
+    Transaction* txn = nullptr;
+    std::shared_ptr<TxnKv> txn_kv;
+    // If users want to extend the lifespan of the kv pair returned by `next()`, they can pass an
+    // object pool to collect the inner iterators that have completed iterated.
+    std::vector<std::unique_ptr<RangeGetIterator>>* obj_pool = nullptr;
+};
+class FullRangeGetIterator {
+public:
+    FullRangeGetIterator() = default;
+
+    virtual ~FullRangeGetIterator() = default;
+
+    virtual bool is_valid() = 0;
+
+    virtual bool has_next() = 0;
+
+    virtual std::optional<std::pair<std::string_view, std::string_view>> next() = 0;
+};
 
 class TxnKv {
 public:
@@ -55,6 +93,9 @@ public:
     virtual TxnErrorCode create_txn(std::unique_ptr<Transaction>* txn) = 0;
 
     virtual int init() = 0;
+
+    virtual std::unique_ptr<FullRangeGetIterator> full_range_get(
+            std::string begin, std::string end, FullRangeGetIteratorOptions opts) = 0;
 };
 
 class Transaction {
@@ -237,6 +278,9 @@ public:
 
     int init() override;
 
+    std::unique_ptr<FullRangeGetIterator> full_range_get(std::string begin, std::string end,
+                                                         FullRangeGetIteratorOptions opts) override;
+
 private:
     std::shared_ptr<fdb::Network> network_;
     std::shared_ptr<fdb::Database> database_;
@@ -373,6 +417,8 @@ private:
 class Transaction : public cloud::Transaction {
 public:
     friend class Database;
+    friend class FullRangeGetIterator;
+
     Transaction(std::shared_ptr<Database> db) : db_(std::move(db)) {}
 
     ~Transaction() override {
@@ -457,6 +503,42 @@ private:
     bool commited_ = false;
     bool aborted_ = false;
     FDBTransaction* txn_ = nullptr;
+};
+
+class FullRangeGetIterator : public cloud::FullRangeGetIterator {
+public:
+    FullRangeGetIterator(std::string begin, std::string end, FullRangeGetIteratorOptions opts);
+
+    ~FullRangeGetIterator() override;
+
+    bool is_valid() override { return is_valid_; }
+
+    bool has_next() override;
+
+    std::optional<std::pair<std::string_view, std::string_view>> next() override;
+
+private:
+    // Set `is_valid_` to false if meet any error
+    void init();
+
+    // Await `fut_` and create new inner iter.
+    // Set `is_valid_` to false if meet any error
+    void await_future();
+
+    // Perform a paginate range get asynchronously and set `fut_`.
+    // Set `is_valid_` to false if meet any error
+    void async_inner_get(std::string_view begin);
+
+    bool prefetch();
+
+    FullRangeGetIteratorOptions opts_;
+
+    bool is_valid_ = true;
+    std::string begin_;
+    std::string end_;
+    std::unique_ptr<Transaction> txn_;
+    std::unique_ptr<RangeGetIterator> inner_iter_;
+    FDBFuture* fut_ = nullptr;
 };
 
 } // namespace fdb
